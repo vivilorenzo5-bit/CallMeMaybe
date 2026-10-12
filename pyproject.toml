@@ -1,0 +1,35 @@
+[project]
+name = "call-me-maybe"
+version = "0.1.0"
+description = "LLM Project 42 Lisbon vlourenc"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "numpy>=1.24.0",
+    "llm-sdk",
+]
+
+[tool.uv.sources]
+llm-sdk = { path = "llm_sdk", editable = true }
+
+[dependency-groups]
+dev = [
+    "flake8>=6.0.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503"]
+exclude = [".venv", "llm_sdk", "build", "dist"]
