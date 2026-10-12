@@ -29,6 +29,8 @@ dev = [
 
 [tool.mypy]
 python_version = "3.10"
+mypy_path = "."
+explicit_package_bases = true
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
@@ -36,7 +38,5 @@ ignore_missing_imports = true
 disallow_untyped_defs = true
 check_untyped_defs = true
 
-[tool.flake8]
-max-line-length = 100
-extend-ignore = ["E203", "W503"]
-exclude = [".venv", "llm_sdk", "build", "dist"]
+[flake8]
+max-line-length = 79
