@@ -1,12 +1,12 @@
-"""Main entry point for running the call-me-maybe application."""
-
 import json
 import sys
 from pathlib import Path
 from pydantic import ValidationError
+from llm_sdk import Small_LLM_Model
 from src.config import AppConfig
 from src.schema.function_def import FunctionDefinition
 from src.schema.test_prompt import TestPrompt
+from src.vocab.manager import VocabManager
 
 
 def load_json_file(path: Path) -> list[dict[str, object]]:
@@ -17,10 +17,6 @@ def load_json_file(path: Path) -> list[dict[str, object]]:
 
     Returns:
         Parsed list of JSON objects.
-
-    Raises:
-        FileNotFoundError: If the file does not exist.
-        ValueError: If JSON is invalid or root is not an array.
     """
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
@@ -66,11 +62,34 @@ def main() -> int:
         config.output_path.parent.mkdir(parents=True, exist_ok=True)
 
         print(
-            f"[OK] Initialized successfully.\n"
-            f"     - Loaded {len(function_definitions)} functions.\n"
-            f"     - Loaded {len(test_prompts)} prompts.\n"
-            f"     - Target output: {config.output_path}"
+            f"[OK] Schemas loaded: {len(function_definitions)} functions, "
+            f"{len(test_prompts)} prompts."
         )
+
+        print("[OK] Initializing model and vocabulary indexing...")
+        model = Small_LLM_Model()
+        vocab_file = Path(model.get_path_to_vocab_file())
+        vocab_mgr = VocabManager.from_vocab_file(vocab_file)
+
+        print(
+            f"[OK] Vocabulary indexed:\n"
+            f"     - Total tokens: {vocab_mgr.vocab_size}\n"
+            f"     - Numeric tokens: {len(vocab_mgr.number_tokens)}\n"
+            f"     - Boolean tokens: {len(vocab_mgr.boolean_tokens)}"
+        )
+
+        test_fn_name = function_definitions[0].name
+        prefixes = vocab_mgr.trie.get_tokens_that_are_prefixes(
+            test_fn_name
+        )
+        decoded_prefixes = [
+            vocab_mgr.decode_token_id(t) for t in prefixes[:5]
+        ]
+        print(
+            f"[OK] Trie prefix test for '{test_fn_name}': "
+            f"{decoded_prefixes}"
+        )
+
         return 0
 
     except ValidationError as err:
