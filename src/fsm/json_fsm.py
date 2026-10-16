@@ -218,6 +218,7 @@ class JsonFSM(BaseModel):
                 self.context.static_buffer = "}"
                 self.context.current_state = FSMStateType.PARAM_DELIMITER
                 return
+
             self.context.accumulated_text += token_str
 
         elif param_type == "boolean":

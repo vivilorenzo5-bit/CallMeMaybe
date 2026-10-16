@@ -15,10 +15,23 @@ class ConstrainedEngine(BaseModel):
     function_defs: dict[str, FunctionDefinition]
     max_new_tokens: int = Field(default=128)
 
+    def _build_prompt(self, user_prompt: str) -> str:
+        tools_desc = "\n".join(
+            f"- {fn.name}: {fn.description}"
+            for fn in self.function_defs.values()
+        )
+        return (
+            f"Available function: \n{tools_desc}\n\n"
+            f"User: {user_prompt}\n"
+            f"Function call: "
+        )
+
     def generate_function_call(
             self, prompt_text: str
     ) -> dict[str, object]:
-        encoded = np.asarray(self.model.encode(prompt_text)).flatten()
+        formatted_prompt = self._build_prompt(prompt_text)
+        encoded = np.asarray(
+            self.model.encode(formatted_prompt)).flatten()
         input_ids: list[int] = [int(tok) for tok in encoded]
 
         fsm = JsonFSM(
@@ -43,6 +56,7 @@ class ConstrainedEngine(BaseModel):
                 raw_logits, allowed_tokens
             )
             next_token = LogitsMasker.select_best_token(masked_logits)
+
             token_str = self.vocab_mgr.decode_token_id(next_token)
             step_idx = len(input_ids) - initial_len
             print(
