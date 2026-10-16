@@ -1,3 +1,5 @@
+export HF_HOME ?= /tmp/$(USER)_hf_cache
+
 PYTHON := uv run python
 SRC_DIR := src
 

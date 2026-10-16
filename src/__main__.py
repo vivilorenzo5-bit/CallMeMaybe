@@ -4,6 +4,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from llm_sdk import Small_LLM_Model
 from src.config import AppConfig
+from src.fsm.json_fsm import JsonFSM
 from src.schema.function_def import FunctionDefinition
 from src.schema.test_prompt import TestPrompt
 from src.vocab.manager import VocabManager
@@ -17,6 +18,10 @@ def load_json_file(path: Path) -> list[dict[str, object]]:
 
     Returns:
         Parsed list of JSON objects.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If JSON is invalid or root is not an array.
     """
     if not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
@@ -52,6 +57,7 @@ def main() -> int:
             FunctionDefinition.model_validate(fn)
             for fn in raw_functions
         ]
+        fn_map = {fn.name: fn for fn in function_definitions}
 
         raw_prompts = load_json_file(config.input_path)
         test_prompts = [
@@ -71,24 +77,23 @@ def main() -> int:
         vocab_file = Path(model.get_path_to_vocab_file())
         vocab_mgr = VocabManager.from_vocab_file(vocab_file)
 
+        print("[OK] Initializing FSM state machine test...")
+        fsm = JsonFSM(function_defs=fn_map, vocab_mgr=vocab_mgr)
+
+        initial_tokens = fsm.get_allowed_tokens()
+        decoded_init = [vocab_mgr.decode_token_id(t) for t in initial_tokens]
         print(
-            f"[OK] Vocabulary indexed:\n"
-            f"     - Total tokens: {vocab_mgr.vocab_size}\n"
-            f"     - Numeric tokens: {len(vocab_mgr.number_tokens)}\n"
-            f"     - Boolean tokens: {len(vocab_mgr.boolean_tokens)}"
+            f"[OK] FSM START state allowed tokens (must start with '{{'): "
+            f"{decoded_init[:3]}"
         )
 
-        test_fn_name = function_definitions[0].name
-        prefixes = vocab_mgr.trie.get_tokens_that_are_prefixes(
-            test_fn_name
-        )
-        decoded_prefixes = [
-            vocab_mgr.decode_token_id(t) for t in prefixes[:5]
-        ]
-        print(
-            f"[OK] Trie prefix test for '{test_fn_name}': "
-            f"{decoded_prefixes}"
-        )
+        if initial_tokens:
+            fsm.consume_token(initial_tokens[0])
+            print(
+                f"[OK] FSM after consuming token: "
+                f"state={fsm.context.current_state}, "
+                f"buffer='{fsm.context.static_buffer}'"
+            )
 
         return 0
 
