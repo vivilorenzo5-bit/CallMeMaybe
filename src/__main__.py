@@ -4,7 +4,7 @@ from pathlib import Path
 from pydantic import ValidationError
 from llm_sdk import Small_LLM_Model
 from src.config import AppConfig
-from src.fsm.json_fsm import JsonFSM
+from src.generator.engine import ConstrainedEngine
 from src.schema.function_def import FunctionDefinition
 from src.schema.test_prompt import TestPrompt
 from src.vocab.manager import VocabManager
@@ -77,31 +77,27 @@ def main() -> int:
         vocab_file = Path(model.get_path_to_vocab_file())
         vocab_mgr = VocabManager.from_vocab_file(vocab_file)
 
-        print("[OK] Initializing FSM state machine test...")
-        fsm = JsonFSM(function_defs=fn_map, vocab_mgr=vocab_mgr)
-
-        initial_tokens = fsm.get_allowed_tokens()
-        decoded_init = [vocab_mgr.decode_token_id(t) for t in initial_tokens]
-        print(
-            f"[OK] FSM START state allowed tokens (must start with '{{'): "
-            f"{decoded_init[:3]}"
+        print("[OK] Initializing Constrained Decoding Engine...")
+        engine = ConstrainedEngine(
+            model=model,
+            vocab_mgr=vocab_mgr,
+            function_defs=fn_map,
         )
 
-        if initial_tokens:
-            fsm.consume_token(initial_tokens[0])
-            print(
-                f"[OK] FSM after consuming token: "
-                f"state={fsm.context.current_state}, "
-                f"buffer='{fsm.context.static_buffer}'"
-            )
+        # Teste real com o primeiro prompt dos testes
+        sample_prompt = test_prompts[0].prompt
+        print(f"\n[RUN] Testing prompt 0: \"{sample_prompt}\"")
+
+        result = engine.generate_function_call(sample_prompt)
+        print(f"[OK] Generated Function Call:\n{json.dumps(result, indent=2)}")
 
         return 0
 
     except ValidationError as err:
         sys.stderr.write(f"Schema Validation Error:\n{err}\n")
         return 1
-    except (FileNotFoundError, ValueError) as err:
-        sys.stderr.write(f"Configuration/IO Error: {err}\n")
+    except (FileNotFoundError, ValueError, RuntimeError) as err:
+        sys.stderr.write(f"Engine/IO Error: {err}\n")
         return 1
     except Exception as err:
         sys.stderr.write(f"Unexpected Fatal Error: {err}\n")

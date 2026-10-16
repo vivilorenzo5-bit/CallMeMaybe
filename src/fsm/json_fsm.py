@@ -175,11 +175,16 @@ class JsonFSM(BaseModel):
         if param_type == "number":
             allowed = list(self.vocab_mgr.number_tokens)
             if self.context.accumulated_text:
-                delim = ", " if self.context.remaining_params else "}}"
-                delims = self.vocab_mgr.trie.get_tokens_that_are_prefixes(
-                    delim
-                )
-                allowed.extend(delims)
+                if self.context.remaining_params:
+                    comma_tokens = (
+                        self.vocab_mgr.trie.get_tokens_that_are_prefixes(",")
+                    )
+                    allowed.extend(comma_tokens)
+                else:
+                    brace_tokens = (
+                        self.vocab_mgr.trie.get_tokens_that_are_prefixes("}")
+                    )
+                    allowed.extend(brace_tokens)
             return allowed
 
         if param_type == "boolean":
@@ -189,30 +194,42 @@ class JsonFSM(BaseModel):
             return self.vocab_mgr.trie.get_tokens_that_are_prefixes('"')
 
         quote_ids = set(self.vocab_mgr.quote_token_ids)
-        all_allowed: list[int] = []
-        for tid in range(min(5000, self.vocab_mgr.vocab_size)):
-            all_allowed.append(tid)
+        all_allowed: list[int] = list(
+            range(min(5000, self.vocab_mgr.vocab_size)))
         all_allowed.extend(list(quote_ids))
         return all_allowed
 
     def _consume_param_value(self, token_str: str) -> None:
         param_type = self.context.current_param_type
-        self.context.accumulated_text += token_str
-        acc = self.context.accumulated_text
 
         if param_type == "number":
-            delim = ", " if self.context.remaining_params else "}}"
-            if acc.endswith(delim):
-                value_str = acc[:-len(delim)].strip()
-                self._record_parsed_value(value_str)
-                self._transition_after_param_value()
+            if "," in token_str:
+                raw_num = self.context.accumulated_text.strip()
+                self._record_parsed_value(raw_num)
+                self.context.accumulated_text = ""
+                self.context.static_buffer = " "
+                self.context.current_state = FSMStateType.PARAM_DELIMITER
+                return
+
+            if "}" in token_str:
+                raw_num = self.context.accumulated_text.strip()
+                self._record_parsed_value(raw_num)
+                self.context.accumulated_text = ""
+                self.context.static_buffer = "}"
+                self.context.current_state = FSMStateType.PARAM_DELIMITER
+                return
+            self.context.accumulated_text += token_str
 
         elif param_type == "boolean":
+            self.context.accumulated_text += token_str
+            acc = self.context.accumulated_text
             if acc in ("true", "false"):
                 self._record_parsed_value(acc)
                 self._transition_after_param_value()
 
         elif param_type == "string":
+            self.context.accumulated_text += token_str
+            acc = self.context.accumulated_text
             if not self.context.in_string_literal and '"' in token_str:
                 self.context.in_string_literal = True
             elif self.context.in_string_literal and '"' in token_str:
