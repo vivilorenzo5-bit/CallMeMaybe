@@ -1,5 +1,6 @@
 import json
 import sys
+import traceback
 from pathlib import Path
 from pydantic import ValidationError
 from llm_sdk import Small_LLM_Model
@@ -28,7 +29,7 @@ def load_json_file(path: Path) -> list[dict[str, object]]:
 
     with path.open("r", encoding="utf-8") as stream:
         try:
-            content = json.load(stream)
+            content: object = json.load(stream)
         except json.JSONDecodeError as exc:
             msg = f"Invalid JSON in file '{path}': {exc}"
             raise ValueError(msg) from exc
@@ -84,12 +85,27 @@ def main() -> int:
             function_defs=fn_map,
         )
 
-        # Teste real com o primeiro prompt dos testes
-        sample_prompt = test_prompts[0].prompt
-        print(f"\n[RUN] Testing prompt 0: \"{sample_prompt}\"")
+        results: list[dict[str, object]] = []
+        total = len(test_prompts)
 
-        result = engine.generate_function_call(sample_prompt)
-        print(f"[OK] Generated Function Call:\n{json.dumps(result, indent=2)}")
+        print(f"\n[RUN] Generating function calls for {total} prompts...")
+
+        for idx, item in enumerate(test_prompts, start=1):
+            print(f"[{idx:02d}/{total:02d}] Processing: \"{item.prompt}\"")
+            generated = engine.generate_function_call(item.prompt)
+
+            entry: dict[str, object] = {
+                "prompt": item.prompt,
+                "name": generated["name"],
+                "parameters": generated["parameters"],
+            }
+            results.append(entry)
+
+        with config.output_path.open("w", encoding="utf-8") as out_file:
+            json.dump(results, out_file, indent=2, ensure_ascii=False)
+
+        print(f"\n[OK] Successfully wrote {len(results)} calls to:")
+        print(f"     -> {config.output_path}")
 
         return 0
 
@@ -101,6 +117,7 @@ def main() -> int:
         return 1
     except Exception as err:
         sys.stderr.write(f"Unexpected Fatal Error: {err}\n")
+        traceback.print_exc()
         return 1
 
 

@@ -191,13 +191,22 @@ class JsonFSM(BaseModel):
             return list(self.vocab_mgr.boolean_tokens)
 
         if not self.context.in_string_literal:
-            return self.vocab_mgr.trie.get_tokens_that_are_prefixes('"')
+            return [self.vocab_mgr.quote_token_id]
 
-        quote_ids = set(self.vocab_mgr.quote_token_ids)
-        all_allowed: list[int] = list(
-            range(min(5000, self.vocab_mgr.vocab_size)))
-        all_allowed.extend(list(quote_ids))
-        return all_allowed
+        closing_tokens = [self.vocab_mgr.quote_token_id]
+        if self.context.remaining_params:
+            closing_tokens.extend(
+                self.vocab_mgr.trie.get_tokens_that_are_prefixes('",')
+            )
+
+        if len(self.context.accumulated_text) >= 50:
+            return closing_tokens
+
+        allowed_str = list(self.vocab_mgr.safe_string_tokens)
+        if self.context.accumulated_text:
+            allowed_str.extend(closing_tokens)
+
+        return allowed_str
 
     def _consume_param_value(self, token_str: str) -> None:
         param_type = self.context.current_param_type
@@ -229,14 +238,28 @@ class JsonFSM(BaseModel):
                 self._transition_after_param_value()
 
         elif param_type == "string":
-            self.context.accumulated_text += token_str
-            acc = self.context.accumulated_text
-            if not self.context.in_string_literal and '"' in token_str:
-                self.context.in_string_literal = True
-            elif self.context.in_string_literal and '"' in token_str:
-                clean_str = acc.strip('"')
+            if not self.context.in_string_literal:
+                if '"' in token_str:
+                    self.context.in_string_literal = True
+                    self.context.accumulated_text = ""
+                return
+
+            if '"' in token_str:
+                before_quote = token_str.split('"', 1)[0]
+                self.context.accumulated_text += before_quote
+                clean_str = self.context.accumulated_text
                 self._record_parsed_value(clean_str)
+
                 self._transition_after_param_value()
+
+                if (
+                    "," in token_str
+                    and self.context.static_buffer.startswith(",")
+                ):
+                    self.context.static_buffer = self.context.static_buffer[1:]
+                return
+
+            self.context.accumulated_text += token_str
 
     def _record_parsed_value(self, raw_value: str) -> None:
         param_name = self.context.current_param_name

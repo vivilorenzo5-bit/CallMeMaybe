@@ -30,6 +30,8 @@ class VocabManager(BaseModel):
     number_tokens: list[int] = Field(default_factory=list)
     boolean_tokens: list[int] = Field(default_factory=list)
     quote_token_ids: list[int] = Field(default_factory=list)
+    safe_string_tokens: list[int] = Field(default_factory=list)
+    quote_token_id: int = Field(default=1)
 
     @classmethod
     def from_vocab_file(cls, vocab_file_path: Path) -> "VocabManager":
@@ -57,6 +59,8 @@ class VocabManager(BaseModel):
         number_tokens: list[int] = []
         boolean_tokens: list[int] = []
         quote_token_ids: list[int] = []
+        safe_string_tokens: list[int] = []
+        quote_token_id: int = 1
 
         allowed_number_chars: set[str] = set("0123456789.-+eE")
 
@@ -70,6 +74,9 @@ class VocabManager(BaseModel):
 
             trie.insert(decoded_token, token_id)
 
+            if decoded_token == '"':
+                quote_token_id = token_id
+
             if decoded_token and all(
                 c in allowed_number_chars for c in decoded_token
             ):
@@ -82,6 +89,8 @@ class VocabManager(BaseModel):
                     boolean_tokens.append(token_id)
             if '"' in decoded_token:
                 quote_token_ids.append(token_id)
+            if '"' not in decoded_token and "\n" not in decoded_token:
+                safe_string_tokens.append(token_id)
 
         return cls(
             vocab_size=len(id_to_token),
@@ -90,7 +99,9 @@ class VocabManager(BaseModel):
             trie=trie,
             number_tokens=number_tokens,
             boolean_tokens=boolean_tokens,
-            quote_token_ids=quote_token_ids
+            quote_token_ids=quote_token_ids,
+            safe_string_tokens=safe_string_tokens,
+            quote_token_id=quote_token_id
         )
 
     def decode_token_id(self, token_id: int) -> str:

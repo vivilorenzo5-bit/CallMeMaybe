@@ -13,7 +13,7 @@ class ConstrainedEngine(BaseModel):
     model: Small_LLM_Model
     vocab_mgr: VocabManager
     function_defs: dict[str, FunctionDefinition]
-    max_new_tokens: int = Field(default=128)
+    max_new_tokens: int = Field(default=256)
 
     def _build_prompt(self, user_prompt: str) -> str:
         tools_desc = "\n".join(
@@ -57,14 +57,14 @@ class ConstrainedEngine(BaseModel):
             )
             next_token = LogitsMasker.select_best_token(masked_logits)
 
-            token_str = self.vocab_mgr.decode_token_id(next_token)
-            step_idx = len(input_ids) - initial_len
-            print(
-                f"[DEBUG Step {step_idx:02d}] "
-                f"Token: {repr(token_str):<12} "
-                f"(ID {next_token}) | "
-                f"State: {fsm.context.current_state}"
-            )
+            # token_str = self.vocab_mgr.decode_token_id(next_token)
+            # step_idx = len(input_ids) - initial_len
+            # print(
+            #     f"[DEBUG Step {step_idx:02d}] "
+            #     f"Token: {repr(token_str):<12} "
+            #     f"(ID {next_token}) | "
+            #     f"State: {fsm.context.current_state}"
+            # )
             fsm.consume_token(next_token)
             input_ids.append(next_token)
 
