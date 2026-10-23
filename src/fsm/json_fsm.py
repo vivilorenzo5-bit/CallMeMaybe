@@ -172,7 +172,7 @@ class JsonFSM(BaseModel):
     def _get_param_value_tokens(self) -> list[int]:
         param_type = self.context.current_param_type
 
-        if param_type == "number":
+        if param_type in ("number", "integer", "float"):
             allowed = list(self.vocab_mgr.number_tokens)
             if self.context.accumulated_text:
                 if self.context.remaining_params:
@@ -193,25 +193,35 @@ class JsonFSM(BaseModel):
         if not self.context.in_string_literal:
             return [self.vocab_mgr.quote_token_id]
 
-        closing_tokens = [self.vocab_mgr.quote_token_id]
+        closing_tokens: list[int] = [self.vocab_mgr.quote_token_id]
         if self.context.remaining_params:
             closing_tokens.extend(
                 self.vocab_mgr.trie.get_tokens_that_are_prefixes('",')
             )
+        else:
+            closing_tokens.extend(
+                self.vocab_mgr.trie.get_tokens_that_are_prefixes('"}')
+            )
+            closing_tokens.extend(
+                self.vocab_mgr.trie.get_tokens_that_are_prefixes('"}}')
+            )
 
-        if len(self.context.accumulated_text) >= 50:
+        if len(self.context.accumulated_text) >= 60:
             return closing_tokens
 
         allowed_str = list(self.vocab_mgr.safe_string_tokens)
-        if self.context.accumulated_text:
-            allowed_str.extend(closing_tokens)
+        backslash_tokens = (
+            self.vocab_mgr.trie.get_tokens_that_are_prefixes("\\")
+        )
+        allowed_str.extend(backslash_tokens)
+        allowed_str.extend(closing_tokens)
 
         return allowed_str
 
     def _consume_param_value(self, token_str: str) -> None:
         param_type = self.context.current_param_type
 
-        if param_type == "number":
+        if param_type in ("number", "integer", "float"):
             if "," in token_str:
                 raw_num = self.context.accumulated_text.strip()
                 self._record_parsed_value(raw_num)
@@ -244,19 +254,40 @@ class JsonFSM(BaseModel):
                     self.context.accumulated_text = ""
                 return
 
+            is_escaped = (
+                self.context.accumulated_text.endswith("\\")
+                and not self.context.accumulated_text.endswith("\\\\")
+            )
+            if '"' in token_str and is_escaped:
+                self.context.accumulated_text += token_str
+                return
+
             if '"' in token_str:
                 before_quote = token_str.split('"', 1)[0]
+                after_quote = token_str.split('"', 1)[1]
                 self.context.accumulated_text += before_quote
-                clean_str = self.context.accumulated_text
-                self._record_parsed_value(clean_str)
 
+                clean_str = self.context.accumulated_text.strip()
+                clean_str = clean_str.replace("\\\\", "\\")
+                clean_str = clean_str.replace('\\"', '"')
+
+                self._record_parsed_value(clean_str)
                 self._transition_after_param_value()
 
                 if (
-                    "," in token_str
+                    "," in after_quote
                     and self.context.static_buffer.startswith(",")
                 ):
                     self.context.static_buffer = self.context.static_buffer[1:]
+                elif "}" in after_quote:
+                    num_braces = after_quote.count("}")
+                    for _ in range(num_braces):
+                        if self.context.static_buffer.startswith("}"):
+                            self.context.static_buffer = (
+                                self.context.static_buffer[1:]
+                            )
+                    if not self.context.static_buffer:
+                        self.context.current_state = FSMStateType.DONE
                 return
 
             self.context.accumulated_text += token_str
@@ -267,11 +298,15 @@ class JsonFSM(BaseModel):
         if not param_name:
             return
 
-        if param_type == "number":
+        if param_type == "integer":
             try:
-                val: object = (
-                    float(raw_value) if "." in raw_value else int(raw_value)
-                )
+                val: object = int(float(raw_value))
+            except ValueError:
+                val = 0
+            self.context.parsed_parameters[param_name] = val
+        elif param_type in ("number", "float"):
+            try:
+                val = float(raw_value)
             except ValueError:
                 val = 0.0
             self.context.parsed_parameters[param_name] = val

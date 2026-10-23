@@ -2,7 +2,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-ParameterType = Literal["number", "string", "boolean"]
+ParameterType = Literal["number", "integer", "float", "string", "boolean"]
 
 
 class ParameterProperty(BaseModel):

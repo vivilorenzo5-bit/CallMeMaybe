@@ -16,14 +16,25 @@ class ConstrainedEngine(BaseModel):
     max_new_tokens: int = Field(default=256)
 
     def _build_prompt(self, user_prompt: str) -> str:
-        tools_desc = "\n".join(
-            f"- {fn.name}: {fn.description}"
-            for fn in self.function_defs.values()
-        )
+        tools_lines: list[str] = []
+        for fn in self.function_defs.values():
+            params_str = ", ".join(
+                f"{p_name}: {p_info.type}"
+                for p_name, p_info in fn.parameters.items()
+            )
+            tools_lines.append(
+                f"- {fn.name}({params_str}): {fn.description}"
+            )
+        tools_desc = "\n".join(tools_lines)
+
         return (
-            f"Available function: \n{tools_desc}\n\n"
-            f"User: {user_prompt}\n"
-            f"Function call: "
+            f"<|im_start|>system\n"
+            f"You are a helpful assistant that calls functions. "
+            f"Select the appropriate tool and extract arguments exactly "
+            f"from the user query without adding extra text.\n\n"
+            f"Tools:\n{tools_desc}<|im_end|>\n"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
         )
 
     def generate_function_call(
